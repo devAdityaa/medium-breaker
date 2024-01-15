@@ -1,31 +1,63 @@
+let counter = 0;
+let ids = [];
 
-chrome.runtime.onInstalled.addListener(function() {
-    // Create a context menu item
-    chrome.contextMenus.create({
-      id: "myContextMenuOption",
-      title: "Break this Article!",
-      contexts: ["all"],
-    });
+
+
+
+
+
+function generateUniqueId() {
+  let timestamp = new Date().getTime();
+  timestamp = timestamp-(Math.floor(timestamp / 1000)*1000)
+  counter++;
+  return counter+timestamp ;
+}
+
+
+
+const contextMenuId = "myContextMenuOption";
+chrome.runtime.onInstalled.addListener(function () {
+  chrome.contextMenus.create({
+    id: contextMenuId,
+    title: "Break this Article!",
+    contexts: ["all"],
   });
-  chrome.contextMenus.onClicked.addListener(function(info, tab) {
-    if (info.menuItemId === "myContextMenuOption") {
-      // Check if the context is within medium.com
-      if (tab.url && tab.url.startsWith("https://medium.com/")) {
-        let url = "http://webcache.googleusercontent.com/search?q=cache:"+tab.url
-        //chrome.tabs.create({url:"http://webcache.googleusercontent.com/search?q=cache:"+tab.url})
-        fetch(url)
-        .then(async (res)=>{
-          console.log(await res.text())
-          return res.text
-        })
-        .then((res)=>{
-          console.log(res)
-        })
-      } else {
-        chrome.contextMenus.update("myContextMenuOption", { visible: false });
-      }
-    }
-  });  
+});
 
-  
-  
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (!(tab.url.includes("webcache.googleusercontent"))) {
+    let rules = await chrome.declarativeNetRequest.getDynamicRules();
+    let rulesArr = []
+      for(let i of rules){
+        rulesArr.push(i.id)
+      }
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: rulesArr,
+    });
+  }
+});
+
+chrome.contextMenus.onClicked.addListener(async function (info, tab) {
+  if (info.menuItemId === "myContextMenuOption" && !(tab.url.includes("webcache.googleusercontent.com"))) {
+    let url = "http://webcache.googleusercontent.com/search?q=cache:" + tab.url;
+    chrome.tabs.update({ url: url });
+
+    let id = Math.floor(generateUniqueId());
+    console.log(id)
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      addRules: [
+        {
+          id: id,
+          priority: 1,
+          action: { type: "block" },
+          condition: {
+            urlFilter:
+              "https://cdn-client.medium.com/lite/static/js/main*",
+          },
+        },
+      ],
+    });
+
+    ids.push(id);
+  }
+});
